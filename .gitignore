@@ -1,0 +1,27 @@
+# Foundry
+out/
+broadcast/
+cache/
+foundry-pp/
+
+# Node
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.local
+*.env.local
+
+# Subgraph
+subgraph/build/
+subgraph/generated/
+subgraph/abis/*.ts
+
+# OS
+.DS_Store
+# testnet deployer key
+script/sepolia-deployer.json
+
+# 14MB RPC log dump — synced via Syncthing, never commit
+real.json
