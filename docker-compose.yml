@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: graph
+      POSTGRES_PASSWORD: graphpass
+      POSTGRES_DB: graph
+      POSTGRES_INITDB_ARGS: "--locale-provider=libc --locale=C --encoding=UTF8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graph -d graph"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  ipfs:
+    image: ipfs/kubo:v0.26.0
+    environment:
+      IPFS_PROFILE: server
+    volumes:
+      - ipfsdata:/data/ipfs
+    ports:
+      - "15001:5001"
+
+  graph-node:
+    image: graphprotocol/graph-node:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ipfs:
+        condition: service_started
+    environment:
+      GRAPH_LOG: info
+      GRAPH_IPFS_TIMEOUT: "60"
+      postgres_host: postgres
+      postgres_port: "5432"
+      postgres_user: graph
+      postgres_pass: graphpass
+      postgres_db: graph
+      ipfs: "http://ipfs:5001"
+      GRAPH_NODE_CONFIG: ""
+      ethereum: "sepolia:https://ethereum-sepolia-rpc.publicnode.com"
+      GRAPH_EXTRA_ALLOWED_ORIGINS: "*"
+    ports:
+      # Host ports prefixed 1xxxx to avoid clashing with the native stack
+      # (:8001/:8021/:8031/:8041) if it is still running on the same host.
+      - "18001:8000"
+      - "18021:8020"
+      - "18031:8030"
+      - "18041:8040"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    env_file: ./backend/.env
+    environment:
+      PORT: "8787"
+    ports:
+      - "18787:8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ./app
+      args:
+        VITE_AGENT_REGISTRAR: ${VITE_AGENT_REGISTRAR:-0xF160c7156CE7d4168b92daa9C72d1BBd64d82b2C}
+        VITE_AGENT_REPUTATION: ${VITE_AGENT_REPUTATION:-0x8e85bb15D7cFAD1879F4A2D275c50528f9aBb6dB}
+        VITE_HUMAN_VERIFICATION: ${VITE_HUMAN_VERIFICATION:-0x88C0a242Ab3d40b29a375393D873db200D21cB11}
+        VITE_RPC_URL: ${VITE_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+        VITE_SUBGRAPH_URL: ${VITE_SUBGRAPH_URL:-http://127.0.0.1:18001/subgraphs/name/agent-passport}
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:18787}
+        VITE_ROOT_NAME: ${VITE_ROOT_NAME:-agentpassport.eth}
+        VITE_WORLD_APP_ID: ${VITE_WORLD_APP_ID:-app_3d4b2e9e5c2286ae5544dc6790d7db4f}
+        VITE_WORLD_ACTION: ${VITE_WORLD_ACTION:-verify-agent-passport-01}
+        VITE_WORLD_ENV: ${VITE_WORLD_ENV:-production}
+    ports:
+      - "4173:80"
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: ./mcp
+    environment:
+      SUBGRAPH_URL: http://graph-node:8000/subgraphs/name/agent-passport
+    depends_on:
+      - graph-node
+    # MCP servers are stdio-based; run as a bare service so a host client can
+    # attach (docker run --rm -i agent-passport-mcp) or exec into the container.
+    command: ["node", "src/index.mjs"]
+    restart: "no"
+
+volumes:
+  pgdata:
+  ipfsdata:
