@@ -1,0 +1,17 @@
+{
+  "name": "agent-passport-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "World Selfie Check verifier backend: RP-signature issuance, proof verification against the World ID Developer Portal, and on-chain HumanVerification writes.",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@worldcoin/idkit-core": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^4.21.0"
+  }
+}
