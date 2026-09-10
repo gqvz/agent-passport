@@ -1,0 +1,19 @@
+{
+  "name": "agent-passport-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing the Agent Passport reputation graph with natural-language queries over The Graph subgraph.",
+  "bin": {
+    "agent-passport-mcp": "src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "graphql": "^16.14.2",
+    "zod": "^4.5.4"
+  }
+}
