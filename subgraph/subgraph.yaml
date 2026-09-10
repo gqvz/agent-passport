@@ -1,0 +1,107 @@
+specVersion: 1.0.0
+description: >-
+  Agent Passport Reputation Graph. ENSv2 agent identities (agentpassport.eth)
+  gated on World Selfie Check human verification, with EAC-separated
+  reputation records. Indexes AgentRegistrar, AgentReputation and
+  HumanVerification, plus the UserRegistry label records that resolve
+  indexed-string labels into names.
+repository: ""
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: UserRegistry
+    network: sepolia
+    source:
+      address: "0x29DFE8A91Ce0aCB4F3a349cD913e4E0B8c481Ae2"
+      startBlock: 11689649
+      abi: UserRegistry
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - LabelRecord
+        - Agent
+      abis:
+        - name: UserRegistry
+          file: ./abis/UserRegistry.json
+      eventHandlers:
+        - event: LabelRegistered(indexed uint256,indexed bytes32,string,address,uint64,indexed address)
+          handler: handleLabelRegistered
+        - event: LabelUnregistered(indexed uint256,indexed address)
+          handler: handleLabelUnregistered
+        - event: ExpiryUpdated(indexed uint256,indexed uint64,indexed address)
+          handler: handleExpiryUpdated
+      file: ./src/agent-passport.ts
+
+  - kind: ethereum/contract
+    name: AgentRegistrar
+    network: sepolia
+    source:
+      address: "0xF160c7156CE7d4168b92daa9C72d1BBd64d82b2C"
+      startBlock: 11689649
+      abi: AgentRegistrar
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Agent
+        - Human
+        - Platform
+      abis:
+        - name: AgentRegistrar
+          file: ./abis/AgentRegistrar.json
+      blockHandlers:
+        - handler: handleBlock
+      eventHandlers:
+        - event: AgentRegistered(indexed bytes32,indexed string,uint256,indexed address,address,address,uint64)
+          handler: handleAgentRegistered
+        - event: AgentRevoked(indexed bytes32,indexed string)
+          handler: handleAgentRevoked
+      file: ./src/agent-passport.ts
+
+  - kind: ethereum/contract
+    name: AgentReputation
+    network: sepolia
+    source:
+      address: "0x8e85bb15D7cFAD1879F4A2D275c50528f9aBb6dB"
+      startBlock: 11689649
+      abi: AgentReputation
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Agent
+      abis:
+        - name: AgentReputation
+          file: ./abis/AgentReputation.json
+      eventHandlers:
+        - event: ScoreUpdated(indexed bytes32,indexed string,uint256,uint256)
+          handler: handleScoreUpdated
+      file: ./src/agent-passport.ts
+
+  - kind: ethereum/contract
+    name: HumanVerification
+    network: sepolia
+    source:
+      address: "0x88C0a242Ab3d40b29a375393D873db200D21cB11"
+      startBlock: 11689649
+      abi: HumanVerification
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Human
+      abis:
+        - name: HumanVerification
+          file: ./abis/HumanVerification.json
+      eventHandlers:
+        - event: HumanVerified(indexed address,uint256)
+          handler: handleHumanVerified
+        - event: HumanUnverified(indexed address)
+          handler: handleHumanUnverified
+      file: ./src/agent-passport.ts
