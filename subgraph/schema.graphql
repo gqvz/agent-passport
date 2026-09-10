@@ -1,0 +1,59 @@
+type Human @entity {
+  "The Ethereum address of the verified human (0x-prefixed, lowercase)."
+  id: ID!
+  "World ID nullifier hash proving uniqueness."
+  nullifierHash: BigInt!
+  "Block timestamp when the human was last verified."
+  verifiedAt: BigInt!
+  "Whether the human is currently marked verified."
+  isVerified: Boolean!
+  "Agents whose passports this human owns."
+  agents: [Agent!]! @derivedFrom(field: "owner")
+}
+
+type Agent @entity {
+  "Namehash of the agent's ENSv2 name (e.g. algo-1.agentpassport.eth)."
+  id: ID!
+  "The label portion (e.g. 'algo-1')."
+  label: String!
+  "Full ENS name (e.g. 'algo-1.agentpassport.eth')."
+  fullName: String!
+  "Token id minted on the platform UserRegistry."
+  tokenId: BigInt!
+  "The verified human that owns this agent."
+  owner: Human!
+  "Operational address of the agent."
+  agentAddress: Bytes!
+  "ENSv2 resolver holding agent records."
+  resolver: Bytes!
+  "Block timestamp of registration."
+  registeredAt: BigInt!
+  "Name lease expiry."
+  expiry: BigInt!
+  "REGISTERED or REVOKED."
+  status: String!
+  "Latest reputation score (0-100) written by AgentReputation."
+  score: BigInt
+  "Block timestamp of the latest score update."
+  scoreUpdatedAt: BigInt
+}
+
+type Platform @entity {
+  "Namehash of the platform root name (singleton)."
+  id: ID!
+  "Platform root name, e.g. agentpassport.eth."
+  rootName: String!
+  "Total agents ever registered through the platform."
+  agentCount: Int!
+}
+
+type LabelRecord @entity {
+  "Token id (hex) of a label registered on the platform UserRegistry by the registrar."
+  id: ID!
+  "The label string."
+  label: String!
+  "ENSv2 namehash of the agent name, backfilled from AgentRegistered (0x00 placeholder until then)."
+  node: Bytes!
+  "Name lease expiry, kept in sync with ExpiryUpdated."
+  expiry: BigInt!
+}
