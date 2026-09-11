@@ -1,0 +1,38 @@
+# Production build of the Agent Passport UI. VITE_* values are baked in at
+# build time (compose passes them as --build-arg).
+FROM node:22-alpine AS build
+WORKDIR /app
+
+ARG VITE_AGENT_REGISTRAR
+ARG VITE_AGENT_REPUTATION
+ARG VITE_HUMAN_VERIFICATION
+ARG VITE_RPC_URL
+ARG VITE_SUBGRAPH_URL
+ARG VITE_BACKEND_URL
+ARG VITE_ROOT_NAME
+ARG VITE_WORLD_APP_ID
+ARG VITE_WORLD_ACTION
+ARG VITE_WORLD_ENV
+
+ENV VITE_AGENT_REGISTRAR=$VITE_AGENT_REGISTRAR \
+    VITE_AGENT_REPUTATION=$VITE_AGENT_REPUTATION \
+    VITE_HUMAN_VERIFICATION=$VITE_HUMAN_VERIFICATION \
+    VITE_RPC_URL=$VITE_RPC_URL \
+    VITE_SUBGRAPH_URL=$VITE_SUBGRAPH_URL \
+    VITE_BACKEND_URL=$VITE_BACKEND_URL \
+    VITE_ROOT_NAME=$VITE_ROOT_NAME \
+    VITE_WORLD_APP_ID=$VITE_WORLD_APP_ID \
+    VITE_WORLD_ACTION=$VITE_WORLD_ACTION \
+    VITE_WORLD_ENV=$VITE_WORLD_ENV
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
