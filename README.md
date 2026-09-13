@@ -139,7 +139,7 @@ Components:
 ├── docker-compose.yml
 ├── RUNBOOK.md              # Full operations manual (all stacks, gotchas)
 ├── docs/                   # Sponsor-facing write-ups
-└── project.md              # Pitch / sponsor-track framing
+└── SKILL.md                # Operator skill sheet
 ```
 
 ---
@@ -385,9 +385,7 @@ Body: `{ "wallet": "0x…", "signal": "0x…", "idkitResponse": { … } }` →
   subgraph deploys, live status.
 - `docs/world-selfie-check-feedback.md` — World Selfie Check dev-experience write-up (integration
   flow, Developer Portal navigation, Sandbox/test-user states, limitations, and suggestions).
-- `project.md` — pitch and sponsor-track framing.
 - `SKILL.md` — operator skill sheet: capabilities, query recipes, judge-runnable checks.
-- `req.md` — the sponsor-requirement checklist this repo is audited against.
 
 ---
 
@@ -425,7 +423,6 @@ Checklist:
 | Demo video (2–4 min) | ⚠️ | required for World + The Graph tracks |
 | World Selfie Check feedback doc | ✅ | `docs/world-selfie-check-feedback.md` |
 | Pool declaration | ✅ | this section (Start Fresh) |
-| Compliance checklist | ✅ | `req.md` (audited against; see [Docs](#docs)) |
 
 ---
 

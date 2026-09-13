@@ -1,6 +1,6 @@
 # Agent Passport & Reputation Graph — Runbook
 
-ENSv2 (Sepolia) + World Selfie Check + The Graph. See `project.md` for the pitch.
+ENSv2 (Sepolia) + World Selfie Check + The Graph.
 
 ## 0. Environment
 
