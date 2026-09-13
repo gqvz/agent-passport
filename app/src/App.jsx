@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IDKitRequestWidget, selfieCheckLegacy } from "@worldcoin/idkit";
 import { Contract as EthersContract, isAddress, BrowserProvider } from "ethers";
 
@@ -10,14 +10,23 @@ import {
   ROOT_NAME,
   connectWallet,
   isHumanVerified,
-  readScore,
-  namehash,
   subgraphQuery,
   GRAPH_QUERIES,
   LABEL_RE,
 } from "./contracts.js";
 
 const FETCH_TIMEOUT_MS = 15000;
+const VERIFY_STEP_LABELS = {
+  idle: "Not verified yet — run the selfie check.",
+  starting: "Starting World ID verification…",
+  scanning: "Scan the QR with your World ID app, then follow the selfie check.",
+  verifying: "Proof received — verifying and writing to the chain…",
+};
+const WIZARD_STEPS = [
+  { num: "01", title: "Connect your wallet", sub: "Establishes who owns the agent." },
+  { num: "02", title: "Prove you're human", sub: "One unique human, via World Selfie Check." },
+  { num: "03", title: "Register the agent", sub: "Mints your ENSv2 name under agentpassport.eth." },
+];
 
 async function fetchWithTimeout(url, options = {}) {
   const ac = new AbortController();
@@ -29,7 +38,41 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+function pageFromHash() {
+  return window.location.hash.startsWith("#/reputation") ? "reputation" : "register";
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="12" r="3.4" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
+function VerifiedBadge({ verified }) {
+  return (
+    <span className={`badge ${verified ? "ok" : "no"}`}>
+      {verified ? "human verified" : "not yet verified"}
+    </span>
+  );
+}
+
 export default function App() {
+  const [page, setPage] = useState(pageFromHash);
+  const [step, setStep] = useState(0);
+
   const [account, setAccount] = useState(null);
   const [signer, setSigner] = useState(null);
   const [connecting, setConnecting] = useState(false);
@@ -39,76 +82,27 @@ export default function App() {
   const [widgetOpen, setWidgetOpen] = useState(false);
   const [rpContext, setRpContext] = useState(null);
   const [rpError, setRpError] = useState("");
+  const [verifyStep, setVerifyStep] = useState("idle");
+  const [grabbingRp, setGrabbingRp] = useState(false);
+  const autoStartedRef = useRef(false);
+
   const [label, setLabel] = useState("");
   const [agentAddress, setAgentAddress] = useState("");
   const [registerMsg, setRegisterMsg] = useState("");
-  const [scoreNode, setScoreNode] = useState("");
-  const [score, setScore] = useState(null);
-  const [agents, setAgents] = useState([]);
+  const [registerMsgOk, setRegisterMsgOk] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [lastTx, setLastTx] = useState(null);
+
+  const [agents, setAgents] = useState(null);
   const [graphError, setGraphError] = useState("");
   const [graphTick, setGraphTick] = useState(0);
-  const [backendInfo, setBackendInfo] = useState(null);
 
+  // Hash router: #/register (default) and #/reputation behave like separate pages.
   useEffect(() => {
-    if (!account) return;
-    setVerifError("");
-    isHumanVerified(account)
-      .then(setVerified)
-      .catch((e) => {
-        setVerified(false);
-        setVerifError(e.message || String(e));
-      });
-  }, [account, humanTx]);
-
-  useEffect(() => {
-    if (!account || verified) return;
-    let cancelled = false;
-    fetchWithTimeout(`${BACKEND_URL}/api/rp-signature`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: import.meta.env.VITE_WORLD_ACTION || "verify-agent-passport-01" }),
-    })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`rp-signature failed: HTTP ${r.status}`);
-        const ctx = await r.json();
-        if (cancelled) return;
-        setRpContext(ctx);
-        setRpError("");
-        setWidgetOpen(true);
-      })
-      .catch(() => {
-        setRpContext(null);
-        setRpError("Could not start World ID verification — backend unreachable");
-      });
-    return () => { cancelled = true; };
-  }, [account, verified]);
-
-  useEffect(() => {
-    subgraphQuery(GRAPH_QUERIES.agents, { limit: 20 })
-      .then((d) => setAgents(d.agents || []))
-      .catch((e) => setGraphError(e.message));
-  }, [graphTick]);
-
-  useEffect(() => {
-    fetch(`${BACKEND_URL}/api/health`)
-      .then((r) => r.json())
-      .then(setBackendInfo)
-      .catch(() => setBackendInfo(null));
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
-
-  async function onConnect() {
-    if (connecting) return;
-    setConnecting(true);
-    try {
-      const { signer: s, account: a } = await connectWallet();
-      setSigner(s);
-      setAccount(a);
-    } catch (e) {
-      alert(`Connect failed: ${e.message}`);
-    } finally {
-      setConnecting(false);
-    }
-  }
 
   // Keep wallet state in sync with MetaMask (account switch / chain switch /
   // disconnect) so write txs never sign with a stale signer.
@@ -144,161 +138,528 @@ export default function App() {
     };
   }, [account]);
 
-  async function registerAgent() {
-    setRegisterMsg("pending...");
+  // Check on-chain human status whenever the account changes or a verify tx lands.
+  useEffect(() => {
+    if (!account) return;
+    setVerifError("");
+    isHumanVerified(account)
+      .then(setVerified)
+      .catch((e) => {
+        setVerified(false);
+        setVerifError(e.message || String(e));
+      });
+  }, [account, humanTx]);
+
+  // Reset flow state when the account changes or the wallet disconnects.
+  useEffect(() => {
+    if (!account) {
+      setStep(0);
+      setVerified(false);
+      return;
+    }
+    autoStartedRef.current = false;
+    setWidgetOpen(false);
+    setRpContext(null);
+    setRpError("");
+  }, [account]);
+
+  const startVerification = useCallback(() => {
+    if (!account || verified || grabbingRp) return;
+    setGrabbingRp(true);
+    setVerifyStep("starting");
+    setVerifError("");
+    fetchWithTimeout(`${BACKEND_URL}/api/rp-signature`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: import.meta.env.VITE_WORLD_ACTION || "verify-agent-passport-01" }),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`rp-signature failed: HTTP ${r.status}`);
+        const ctx = await r.json();
+        setRpContext(ctx);
+        setRpError("");
+        setVerifyStep("scanning");
+        setWidgetOpen(true);
+      })
+      .catch(() => {
+        setRpContext(null);
+        setVerifyStep("idle");
+        setRpError("Could not start World ID verification — backend unreachable");
+      })
+      .finally(() => setGrabbingRp(false));
+  }, [account, verified, grabbingRp]);
+
+  // Entering the "Prove you're human" step auto-opens the widget once.
+  useEffect(() => {
+    if (step !== 1 || !account || verified) return;
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startVerification();
+  }, [step, account, verified, startVerification]);
+
+  // Already-verified wallets cruise straight through step 2.
+  useEffect(() => {
+    if (verified && step === 1) {
+      const t = setTimeout(() => setStep(2), 650);
+      return () => clearTimeout(t);
+    }
+  }, [verified, step]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGraphError("");
+    subgraphQuery(GRAPH_QUERIES.agents, { limit: 20 })
+      .then((d) => !cancelled && setAgents(d.agents || []))
+      .catch((e) => !cancelled && setGraphError(e.message));
+    return () => { cancelled = true; };
+  }, [graphTick]);
+
+  const myAgents = useMemo(() => {
+    if (!account || !agents) return null;
+    return agents.filter(
+      (a) => a.owner?.id?.toLowerCase() === account.toLowerCase()
+    );
+  }, [account, agents]);
+
+  const myLatestScore = myAgents?.length
+    ? myAgents[0].score === null || myAgents[0].score === undefined
+      ? null
+      : String(myAgents[0].score)
+    : null;
+
+  async function onConnect() {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      const { signer: s, account: a } = await connectWallet();
+      setSigner(s);
+      setAccount(a);
+    } catch (e) {
+      alert(`Connect failed: ${e.message}`);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  const goTo = (i) => {
+    if (i === step) return;
+    setStep(i);
+  };
+  const goNext = () => goTo(Math.min(step + 1, WIZARD_STEPS.length - 1));
+  const goBack = () => goTo(Math.max(step - 1, 0));
+  const canOpenStep = (i) =>
+    i < step || i === 0 || (i === 1 && !!account) || (i === 2 && !!account && verified);
+  const canNext = (i) => (i === 0 ? !!account : i === 1 ? !!verified : false);
+
+  async function registerAgent(e) {
+    e?.preventDefault();
+    if (registering) return;
+    setRegistering(true);
+    setRegisterMsg("");
+    setRegisterMsgOk(false);
     try {
       if (!signer) throw new Error("connect your wallet first");
       const labelName = label.trim();
-      if (!LABEL_RE.test(labelName)) throw new Error("label must be 1-63 chars of lowercase letters/digits/dashes");
+      if (!LABEL_RE.test(labelName))
+        throw new Error("label must be 1-63 chars of lowercase letters, digits, or dashes");
       const target = agentAddress.trim() || account;
-      if (target !== account && !isAddress(target)) throw new Error("agent address must be a valid 0x address");
+      if (target !== account && !isAddress(target))
+        throw new Error("agent address must be a valid 0x address");
       const contract = new EthersContract(ADDRESSES.agentRegistrar, AgentRegistrarAbi.abi, signer);
+      setRegisterMsg("pending...");
       const tx = await contract.registerAgent(labelName, account, target);
       const receipt = await tx.wait();
-      const fullName = `${labelName}.${ROOT_NAME}`;
-      setRegisterMsg(`Registered ${fullName} in tx ${receipt.hash} (node ${namehash(fullName)})`);
+      setLastTx(receipt.hash);
+      setRegisterMsg(`Registered ${labelName}.${ROOT_NAME} in tx ${receipt.hash}`);
+      setRegisterMsgOk(true);
       setGraphTick((t) => t + 1);
-    } catch (e) {
-      setRegisterMsg(`Register failed: ${e.message}`);
+    } catch (err) {
+      setRegisterMsg(`Register failed: ${err.message}`);
+      setRegisterMsgOk(false);
+    } finally {
+      setRegistering(false);
     }
   }
 
-  async function onReadScore() {
-    try {
-      const input = scoreNode.trim();
-      if (!input) throw new Error("enter an agent label or 0x node");
-      let node;
-      if (input.startsWith("0x")) {
-        if (!/^0x[0-9a-fA-F]{64}$/.test(input)) throw new Error("0x node must be 32 bytes of hex");
-        node = input;
-      } else {
-        if (!LABEL_RE.test(input)) throw new Error("invalid label (1-63 lowercase letters/digits/dashes)");
-        node = namehash(`${input}.${ROOT_NAME}`);
-      }
-      const value = await readScore(node);
-      setScore(String(value));
-    } catch (e) {
-      setScore(`error: ${e.message}`);
-    }
-  }
+  const progressPct = registerMsgOk ? 100 : ((step + 1) / WIZARD_STEPS.length) * 100;
+  const slideOffset = -step * 100;
 
   return (
-    <main>
-      <h1>Agent Passport <span>&rarr; Reputation Graph</span></h1>
-      <p className="sub">
-        ENSv2 agent identities under <code>{ROOT_NAME}</code>, gated on World Selfie Check, with
-        EAC-separated reputation records served by The Graph.
-        {backendInfo && backendInfo.ok && <em> · backend verifier {backendInfo.npv}</em>}
-      </p>
+    <>
+      <main>
+      <header className="topbar">
+        <a className="brand" href="#/register">
+          <BrandMark />
+          <span className="brand-name">Sight</span>
+        </a>
+        <nav className="nav-tabs" aria-label="Pages">
+          <a href="#/register" className={page === "register" ? "active" : ""}>Register</a>
+          <a href="#/reputation" className={page === "reputation" ? "active" : ""}>Reputation</a>
+        </nav>
+      </header>
 
-      <section>
-        <h2>1 · Wallet</h2>
-        {account ? (
-          <div>
-            <span className="addr">{account}</span>
-            <span className={`badge ${verified ? "ok" : "no"}`}>
-              {verified ? "human-verified (World Selfie Check)" : "not yet verified"}
+      {page === "reputation" ? (
+        <ReputationPage
+          account={account}
+          myAgents={myAgents}
+          myLatestScore={myLatestScore}
+          agents={agents}
+          graphError={graphError}
+        />
+      ) : (
+        <>
+          <section className="hero">
+            <h1>
+              Human-gated <span className="acc">ENSv2</span> identities.
+            </h1>
+            <div className="hero-meta">
+              <span>{ROOT_NAME} · Sepolia</span>
+              <span>World ID Selfie Check × The Graph</span>
+              <span>ETHOnline ’26</span>
+            </div>
+          </section>
+
+          <div className="progress-row">
+            <span className="progress-meta">Register flow</span>
+            <div className="progress" aria-hidden="true">
+              <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+            </div>
+            <span className="progress-meta">
+              {registerMsgOk ? "done" : `${String(step + 1).padStart(2, "0")} / 03`}
             </span>
-            {verifError && <span className="note err">verification query failed: {verifError}</span>}
           </div>
-        ) : (
-          <button onClick={onConnect} disabled={connecting}>{connecting ? "Connecting…" : "Connect wallet"}</button>
+
+          {registerMsgOk ? (
+            <section className="completion">
+              <span className="kicker">registration complete</span>
+              <h2>
+                {label.trim()}.{ROOT_NAME}
+                <br />is yours.
+              </h2>
+              <p className="note">
+                Your reputation is being indexed — it will appear on the scoreboard shortly.
+                {lastTx && <> tx <code>{lastTx}</code></>}
+              </p>
+              <div className="btn-row">
+                <a className="btn-primary" href="#/reputation">View Reputation &rarr;</a>
+                <button
+                  className="btn-ghost"
+                  onClick={() => {
+                    setRegisterMsgOk(false);
+                    setRegisterMsg("");
+                    setLabel("");
+                    setAgentAddress("");
+                    setStep(2);
+                  }}
+                >
+                  Register another
+                </button>
+              </div>
+            </section>
+          ) : (
+            <div className="carousel">
+              <div className="carousel-window">
+                <div className="carousel-track" style={{ transform: `translateX(${slideOffset}%)` }}>
+                  {WIZARD_STEPS.map((s, i) => (
+                    <div className={`carousel-slide ${i === step ? "active" : ""}`} key={s.num} role="group" aria-label={`Step ${i + 1}`}>
+                      <span className="slide-index" aria-hidden="true">{s.num}</span>
+                      <h2 className="slide-title">{s.title}</h2>
+                      <p className="slide-sub">{s.sub}</p>
+
+                      <div className="slide-body">
+                        {i === 0 && (
+                          <>
+                            <span className="lead-label">owner · Sepolia</span>
+                            <p className="step-lead">
+                              Connect the wallet that will own your agent. Everything here is
+                              written on-chain by you — nothing is controlled by us.
+                            </p>
+                            {!account ? (
+                              <div className="btn-row">
+                                <button className="btn-primary" onClick={onConnect} disabled={connecting}>
+                                  {connecting ? "Connecting…" : "Connect wallet"}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="wallet-row">
+                                <span className="addr" title={account}>{account}</span>
+                                <VerifiedBadge verified={verified} />
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {i === 1 && (
+                          <>
+                            <span className="lead-label">identity · world id</span>
+                            <p className="step-lead">
+                              A World ID selfie check proves you&rsquo;re one unique human. Your
+                              face never leaves your phone — only a zero-knowledge proof is sent.
+                            </p>
+                            {account && !verified && (
+                              <IDKitRequestWidget
+                                open={widgetOpen}
+                                onOpenChange={setWidgetOpen}
+                                app_id={import.meta.env.VITE_WORLD_APP_ID}
+                                action={import.meta.env.VITE_WORLD_ACTION || "verify-agent-passport-01"}
+                                rp_context={rpContext}
+                                allow_legacy_proofs={true}
+                                preset={selfieCheckLegacy({ signal: account })}
+                                environment={import.meta.env.VITE_WORLD_ENV || "production"}
+                                onError={(errorCode, debugReport) => {
+                                  console.error("[agent-passport] world id error", errorCode, debugReport);
+                                  setVerifyStep("idle");
+                                  setVerifError(`World ID failed: ${errorCode || "unknown error"}`);
+                                }}
+                                handleVerify={async (result) => {
+                                  try {
+                                    setVerifError("");
+                                    setVerifyStep("verifying");
+                                    const res = await fetchWithTimeout(`${BACKEND_URL}/api/verify-human`, {
+                                      method: "POST",
+                                      headers: { "content-type": "application/json" },
+                                      body: JSON.stringify({ wallet: account, signal: account, idkitResponse: result }),
+                                    });
+                                    let body = {};
+                                    try {
+                                      body = await res.json();
+                                    } catch {
+                                      /* non-JSON failure body */
+                                    }
+                                    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+                                    setHumanTx(body.txHash);
+                                    setVerifyStep("idle");
+                                    setWidgetOpen(false);
+                                  } catch (e) {
+                                    setVerifyStep("idle");
+                                    setVerifError(e.message || String(e));
+                                    throw e;
+                                  }
+                                }}
+                                onSuccess={() => setWidgetOpen(false)}
+                              />
+                            )}
+                            <div className="btn-row">
+                              <button className="btn-primary" onClick={startVerification} disabled={grabbingRp || verified}>
+                                {grabbingRp ? "Starting…" : verified ? "Verified" : "Open World ID selfie check"}
+                              </button>
+                            </div>
+                            <p className={`verify-status ${verifyStep}`}>{VERIFY_STEP_LABELS[verifyStep]}</p>
+                            {rpError && <div className="note err">{rpError}</div>}
+                            {humanTx && <div className="ok-note">Verified on-chain in tx <code>{humanTx}</code></div>}
+                            {verifError && <div className="note err">{verifError}</div>}
+                          </>
+                        )}
+
+                        {i === 2 && (
+                          <>
+                            <span className="lead-label">identity · ENSv2</span>
+                            <p className="step-lead">
+                              Mint your agent&rsquo;s name under <code>{ROOT_NAME}</code> and
+                              stake it to your wallet. Reputation attaches to the name, not you.
+                            </p>
+                            <form className="reg-form" onSubmit={registerAgent}>
+                              <div className="field">
+                                <label htmlFor="field-label">Agent label</label>
+                                <input
+                                  id="field-label"
+                                  placeholder={`algo-1 → ${label || "algo-1"}.${ROOT_NAME}`}
+                                  value={label}
+                                  onChange={(e) => setLabel(e.target.value)}
+                                />
+                                <p className="hint">Lowercase letters, digits and single dashes — the first label in your registered name.</p>
+                              </div>
+                              <div className="field">
+                                <label htmlFor="field-address">Agent address <span className="opt">(optional)</span></label>
+                                <input
+                                  id="field-address"
+                                  placeholder="0x… defaults to you"
+                                  value={agentAddress}
+                                  onChange={(e) => setAgentAddress(e.target.value)}
+                                />
+                                <p className="hint">Leave blank to name yourself — your wallet becomes the agent.</p>
+                              </div>
+                            </form>
+                            {registerMsg && (
+                              <div className="note err">{registerMsg}</div>
+                            )}
+                            <div className="btn-row">
+                              <button
+                                className="btn-primary"
+                                onClick={registerAgent}
+                                disabled={!account || !verified || registering}
+                              >
+                                {registering ? "Registering…" : "Register agent"}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="carousel-controls">
+                <button
+                  className="ctrl prev"
+                  onClick={goBack}
+                  disabled={step === 0}
+                  aria-label="Previous step"
+                >
+                  PREV
+                </button>
+                <div className="pager" role="tablist" aria-label="Steps">
+                  {WIZARD_STEPS.map((s, i) => (
+                    <button
+                      role="tab"
+                      aria-selected={i === step}
+                      className={`page ${i === step ? "on" : ""} ${i < step ? "past" : ""}`}
+                      key={s.num}
+                      onClick={() => canOpenStep(i) && goTo(i)}
+                      disabled={i !== step && !canOpenStep(i)}
+                    >
+                      {s.num}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="ctrl next"
+                  onClick={goNext}
+                  disabled={!canNext(step)}
+                  aria-label="Next step"
+                >
+                  NEXT
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <Footer />
+      </main>
+    </>
+  );
+}
+
+function ReputationPage({ myAgents, myLatestScore, agents, graphError }) {
+  return (
+    <>
+      <section className="rep-hero">
+        <h1>
+          Reputation, <span className="acc">on-chain.</span>
+        </h1>
+        <div className="hero-meta">
+          <span>the graph index</span>
+          <span>EAC-separated scoring</span>
+          <span>Sight / Sepolia</span>
+        </div>
+      </section>
+
+      <section className="rep-block">
+        <span className="block-label">01 · your reputation</span>
+        {myAgents === null && <p className="score-empty">Connect your wallet to see your score.</p>}
+        {myAgents && myAgents.length === 0 && (
+          <>
+            <p className="score-empty">No agent under your wallet yet — register one above.</p>
+            <div className="btn-row">
+              <a className="btn-primary" href="#/register">Register an agent &rarr;</a>
+            </div>
+          </>
+        )}
+        {myAgents && myAgents.length > 0 && (
+          <>
+            <div className="giant-score">
+              <span className="num">{myLatestScore === null ? "—" : myLatestScore}</span>
+              <span className="den">/ 100</span>
+            </div>
+            <p className="score-caption">score · {myAgents[0].fullName}</p>
+          </>
         )}
       </section>
 
-      <section>
-        <h2>2 · Prove you are a human</h2>
-        {account && !verified && (
-          <IDKitRequestWidget
-            open={widgetOpen}
-            onOpenChange={setWidgetOpen}
-            app_id={import.meta.env.VITE_WORLD_APP_ID}
-            action={import.meta.env.VITE_WORLD_ACTION || "verify-agent-passport-01"}
-            rp_context={rpContext}
-            allow_legacy_proofs={true}
-            preset={selfieCheckLegacy({ signal: account })}
-            environment={import.meta.env.VITE_WORLD_ENV || "production"}
-            handleVerify={async (result) => {
-              try {
-                setVerifError("");
-                const res = await fetchWithTimeout(`${BACKEND_URL}/api/verify-human`, {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ wallet: account, signal: account, idkitResponse: result }),
-                });
-                let body = {};
-                try {
-                  body = await res.json();
-                } catch {
-                  /* non-JSON failure body */
-                }
-                if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-                setHumanTx(body.txHash);
-                setWidgetOpen(false);
-              } catch (e) {
-                setVerifError(e.message || String(e));
-                throw e; // keep the widget's failure state
-              }
-            }}
-            onSuccess={() => setWidgetOpen(false)}
-          />
-        )}
-        {rpError && <div className="note err">{rpError}</div>}
-        {humanTx && <div className="ok-note">On-chain verified in tx <code>{humanTx}</code></div>}
-        {verified && <div className="ok-note">You are verified. Registration is unlocked.</div>}
-      </section>
-
-      <section>
-        <h2>3 · Register an agent</h2>
-        <div className="row">
-          <input
-            placeholder={`label (=> <label>.${ROOT_NAME})`}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <input placeholder="agent address (defaults to you)" value={agentAddress} onChange={(e) => setAgentAddress(e.target.value)} />
-          <button onClick={registerAgent} disabled={!account || !verified}>Register</button>
-        </div>
-        {registerMsg && <div className="note">{registerMsg}</div>}
-      </section>
-
-      <section>
-        <h2>4 · Reputation</h2>
-        <div className="row">
-          <input placeholder="agent label or 0x node" value={scoreNode} onChange={(e) => setScoreNode(e.target.value)} />
-          <button onClick={onReadScore}>Read score</button>
-          {score !== null && <span className="score">score: {score}</span>}
-        </div>
-      </section>
-
-      <section>
-        <h2>5 · Reputation graph (The Graph)</h2>
+      <section className="rep-block">
+        <span className="block-label">02 · scoreboard</span>
         {graphError && <div className="note err">{graphError}</div>}
-        <table>
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>Status</th>
-              <th>Score</th>
-              <th>Owner</th>
-            </tr>
-          </thead>
-          <tbody>
-            {agents.map((a) => (
-              <tr key={a.id}>
-                <td><code>{a.fullName}</code></td>
-                <td>{a.status}</td>
-                <td>{a.score ?? "—"}</td>
-                <td><code>{a.owner?.isVerified ? "✓ " : ""}{a.owner?.id}</code></td>
-              </tr>
+        {!graphError && agents === null && (
+          <div className="skeleton" aria-hidden="true">
+            {[0, 1, 2].map((r) => (
+              <div className="skeleton-row" key={r}>
+                <span className="skeleton-cell w-8" style={{ animationDelay: `${r * 120}ms` }} />
+                <span className="skeleton-cell w-40" style={{ animationDelay: `${r * 120}ms` }} />
+                <span className="skeleton-cell w-8" style={{ animationDelay: `${r * 120}ms` }} />
+                <span className="skeleton-cell w-30" style={{ animationDelay: `${r * 120}ms` }} />
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
+        {!graphError && agents !== null && agents.length === 0 && (
+          <>
+            <p className="score-empty">No agents yet — register the first one.</p>
+            <div className="btn-row">
+              <a className="btn-primary" href="#/register">Register an agent &rarr;</a>
+            </div>
+          </>
+        )}
+        {!graphError && agents !== null && agents.length > 0 && (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Agent</th>
+                  <th>Status</th>
+                  <th>Owner</th>
+                  <th className="score-no">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agents.map((a, idx) => (
+                  <tr
+                    key={a.id}
+                    className={myAgents?.some((m) => m.id === a.id) ? "mine" : undefined}
+                  >
+                    <td className="rank">{String(idx + 1).padStart(2, "0")}</td>
+                    <td><code>{a.fullName}</code></td>
+                    <td>{a.status}</td>
+                    <td><code>{a.owner?.isVerified ? "✓ " : ""}{a.owner?.id}</code></td>
+                    <td className="score-no">{a.score === null || a.score === undefined ? "—" : String(a.score)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
+    </>
+  );
+}
 
-      <footer>
-        ENSv2 + The Graph + World · ETHOnline 2026 · <code>{ADDRESSES.agentRegistrar}</code>
-      </footer>
-    </main>
+function Footer() {
+  const marqueeItem = (key) => (
+    <span className="marquee-item" key={key}>
+      Sight <span className="acc">×</span> ENSv2 <span className="acc">×</span> World ID
+      <span className="acc"> ×</span> The Graph
+    </span>
+  );
+  // Two identical tiled halves: translateX(-50%) crosses exactly one half, so
+  // the loop is seamless, and each half is tiled wide enough to fill any viewport.
+  return (
+    <footer>
+      <div className="marquee" aria-hidden="true">
+        <div className="marquee-track">
+          {[0, 1].map((half) => (
+            <div className="marquee-half" key={half}>
+              {Array.from({ length: 10 }, (_, i) => marqueeItem(i))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="foot-meta">
+        <span>© 2026 Sight</span>
+        <span>ETHOnline 2026 · all rights reserved</span>
+      </div>
+    </footer>
   );
 }
