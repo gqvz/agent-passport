@@ -405,7 +405,7 @@ export default function App() {
                                 rp_context={rpContext}
                                 allow_legacy_proofs={true}
                                 preset={selfieCheckLegacy({ signal: account })}
-                                environment={import.meta.env.VITE_WORLD_ENV || "production"}
+                                environment={import.meta.env.VITE_WORLD_ENV || "staging"}
                                 onError={(errorCode, debugReport) => {
                                   console.error("[agent-passport] world id error", errorCode, debugReport);
                                   setVerifyStep("idle");
