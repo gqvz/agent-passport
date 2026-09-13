@@ -39,7 +39,10 @@ async function fetchWithTimeout(url, options = {}) {
 }
 
 function pageFromHash() {
-  return window.location.hash.startsWith("#/reputation") ? "reputation" : "register";
+  const h = window.location.hash;
+  if (h.startsWith("#/reputation")) return "reputation";
+  if (h.startsWith("#/register")) return "register";
+  return "home";
 }
 
 function CheckIcon() {
@@ -288,17 +291,20 @@ export default function App() {
     <>
       <main>
       <header className="topbar">
-        <a className="brand" href="#/register">
+        <a className="brand" href="#/">
           <BrandMark />
           <span className="brand-name">Sight</span>
         </a>
         <nav className="nav-tabs" aria-label="Pages">
+          <a href="#/" className={page === "home" ? "active" : ""}>Home</a>
           <a href="#/register" className={page === "register" ? "active" : ""}>Register</a>
           <a href="#/reputation" className={page === "reputation" ? "active" : ""}>Reputation</a>
         </nav>
       </header>
 
-      {page === "reputation" ? (
+      {page === "home" ? (
+        <LandingPage />
+      ) : page === "reputation" ? (
         <ReputationPage
           account={account}
           myAgents={myAgents}
@@ -537,8 +543,73 @@ export default function App() {
         </>
       )}
 
-      <Footer />
       </main>
+
+      <Footer />
+    </>
+  );
+}
+
+function LandingPage() {
+  return (
+    <>
+      <section className="land-hero">
+        <h1>Every agent needs a <span className="acc">human</span> behind it.</h1>
+        <div className="hero-meta">
+          <span>Sight · on-chain agent identity</span>
+          <span>World ID Selfie Check × ENSv2</span>
+          <span>The Graph reputation</span>
+        </div>
+      </section>
+
+      <section className="land-block">
+        <span className="block-label">01 · the problem</span>
+        <p className="step-lead land-lede">
+          A script can spin up fifty sock-puppet agents and farm reputation. There's no
+          proof that a real human stands behind any of them — so trust on-chain has no
+          floor. Sight makes one fact load-bearing: <em>one verified human yields
+          one trusted set of agent names.</em>
+        </p>
+      </section>
+
+      <section className="land-block">
+        <span className="block-label">02 · how it works</span>
+        <div className="land-steps">
+          <div className="land-step">
+            <span className="step-num">01</span>
+            <h2>Prove you're human</h2>
+            <p className="step-word">
+              A live <b>World ID Selfie Check</b> binds one unique human to one wallet —
+              no accounts, no scripts, no bots.
+            </p>
+          </div>
+          <div className="land-step">
+            <span className="step-num">02</span>
+            <h2>Register the agent</h2>
+            <p className="step-word">
+              Register <strong>yourname.</strong>
+              <span className="acc">{ROOT_NAME}</span> under <strong>ENSv2</strong> — the
+              only path to a verified agent name.
+            </p>
+          </div>
+          <div className="land-step">
+            <span className="step-num">03</span>
+            <h2>Earn reputation</h2>
+            <p className="step-word">
+              Scores are written by <strong>The Graph</strong>-indexed on-chain records with
+              EAC-separated write access — only the scorer can touch them.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="land-cta">
+        <h2>Ready to give your agent a name?</h2>
+        <div className="btn-row">
+          <a className="btn-primary" href="#/register">Register an agent →</a>
+          <a className="btn-ghost" href="#/reputation">View reputation →</a>
+        </div>
+      </section>
     </>
   );
 }

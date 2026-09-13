@@ -812,6 +812,114 @@ tr.mine td {
   to   { background-position: -200% 0; }
 }
 
+/* ---------- Landing page ---------- */
+.land-hero {
+  padding: clamp(14px, 3vw, 26px) 0 clamp(14px, 2vw, 18px);
+}
+
+.land-hero h1 {
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 4.4vw, 3.3rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.02;
+  margin: 0;
+  max-width: 20ch;
+}
+
+.land-hero h1 .acc {
+  color: var(--accent);
+}
+
+.land-block {
+  border-bottom: 1px solid var(--line);
+  padding: clamp(16px, 2.5vw, 26px) 4px;
+}
+
+.land-lede {
+  max-width: 64ch;
+  font-size: 15px;
+}
+
+.land-lede em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.land-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 26px;
+}
+
+.land-step {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.land-step .step-num {
+  display: block;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.land-step h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  margin: 0 0 10px;
+}
+
+.land-step .step-word {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.land-step .step-word b,
+.land-step .step-word strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.land-step .step-word .acc {
+  color: var(--accent);
+}
+
+.land-cta {
+  padding: clamp(22px, 4vw, 40px) 4px;
+  text-align: center;
+}
+
+.land-cta h2 {
+  font-family: var(--display);
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0 0 22px;
+}
+
+.land-cta .btn-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .land-steps {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+
 /* ---------- Footer / marquee (pinned to viewport bottom) ---------- */
 footer {
   position: fixed;
