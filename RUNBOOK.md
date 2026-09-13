@@ -147,8 +147,11 @@ cd app && npm run dev    # :5173 (needs vite.config.js: react plugin is required
 App env (`app/.env`, see `.env.example`): `VITE_*` contract addresses, `VITE_RPC_URL`,
 `VITE_SUBGRAPH_URL`, `VITE_BACKEND_URL=http://localhost:8787`, `VITE_WORLD_APP_ID`,
 `VITE_WORLD_ACTION=verify-agent-passport-01`. `VITE_WORLD_ENV` unset → the widget talks to the real
-(production) World cloud and hosts a live bridge session; set to `staging` for simulator/playground
-proofs. Addresses default to the live localnet deployment via `app/.env`.
+(production) World cloud and hosts a live bridge session; set to `sandbox` for the World ID Sandbox app
+(fake identity) or `staging` for the web simulator (`simulator.worldcoin.org`) proofs — the env must
+match the proof you mint (the sandbox handoff still verifies at the production
+`developer.world.org/api/v4/verify/{rp_id}`). Addresses default to the live localnet deployment via
+`app/.env`.
 
 Production build: `npm run build && npm run preview` → wasm is emitted to `dist/assets/*.wasm` and
 served as `application/wasm` (verified).
