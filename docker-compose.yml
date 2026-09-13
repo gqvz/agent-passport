@@ -79,7 +79,7 @@ services:
         VITE_ROOT_NAME: ${VITE_ROOT_NAME:-agentpassport.eth}
         VITE_WORLD_APP_ID: ${VITE_WORLD_APP_ID:-app_3d4b2e9e5c2286ae5544dc6790d7db4f}
         VITE_WORLD_ACTION: ${VITE_WORLD_ACTION:-verify-agent-passport-01}
-        VITE_WORLD_ENV: ${VITE_WORLD_ENV:-production}
+        VITE_WORLD_ENV: ${VITE_WORLD_ENV:-staging}
     ports:
       - "4173:80"
     restart: unless-stopped
